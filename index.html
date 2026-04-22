@@ -2,36 +2,37 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>MediaPipe Pose Landmark Takibi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaPipe: Vücut ve El Takibi</title>
     <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
 </head>
 <body>
-  <h1>MediaPipe PoseLandmarker ile Vücut Takibi</h1>
+  <h1>MediaPipe Vücut ve El Takibi</h1>
 
   <section id="demos" class="invisible">
     <h2>Demo: Görsel Üzerinde Tespit</h2>
-    <p>Vücut hatlarını görmek için aşağıdaki görsellerden birine <b>tıklayın</b>.</p>
+    <p>Hem vücut hem el hatlarını görmek için aşağıdaki görsellere <b>tıklayın</b>.</p>
 
     <div class="detectOnClick">
-      <img src="https://assets.codepen.io/9177687/woman-ge0f199f92_640.jpg" width="100%" crossorigin="anonymous" title="Tespit için tıkla!" />
+      <img src="https://assets.codepen.io/9177687/woman-ge0f199f92_640.jpg" crossorigin="anonymous" title="Tespit için tıkla!" />
     </div>
     <div class="detectOnClick">
-      <img src="https://assets.codepen.io/9177687/woman-g1af8d3deb_640.jpg" width="100%" crossorigin="anonymous" title="Tespit için tıkla!" />
+      <img src="https://assets.codepen.io/9177687/couple-gb7cb5db4c_1920.jpg" crossorigin="anonymous" title="Tespit için tıkla!" />
     </div>
 
-    <h2>Demo: Canlı Kamera Takibi</h2>
-    <p>Gerçek zamanlı takip için kameranızı etkinleştirin.</p>
+    <h2>Demo: Canlı Kamera Senkronizasyonu</h2>
+    <p>Kameranızı açın; sistem hem vücudunuzu hem de ellerinizi aynı anda takip edecektir.</p>
 
     <div id="liveView" class="videoView">
       <button id="webcamButton" class="mdc-button mdc-button--raised">
         <span class="mdc-button__ripple"></span>
-        <span class="mdc-button__label">KAMERAYI AÇ</span>
+        <span class="mdc-button__label">KAMERAYI ETKİNLEŞTİR</span>
       </button>
-      <div style="position: relative;">
+      <div class="canvas-container">
         <video id="webcam" autoplay playsinline></video>
-        <canvas class="output_canvas" id="output_canvas" style="position: absolute; left: 0px; top: 0px;"></canvas>
+        <canvas class="output_canvas" id="output_canvas"></canvas>
       </div>
     </div>
   </section>
