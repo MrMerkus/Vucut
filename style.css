@@ -6,56 +6,47 @@ body {
   --mdc-theme-on-primary: #f1f3f4;
 }
 
-h1 {
-  color: #007f8b;
-}
-
-h2 {
-  clear: both;
-}
-
-video {
-  clear: both;
-  display: block;
-  /* Aynalama efekti: Kullanıcı kendini aynada bakıyormuş gibi görmeli */
-  transform: rotateY(180deg);
-  -webkit-transform: rotateY(180deg);
-  -moz-transform: rotateY(180deg);
-}
-
-section {
-  opacity: 1;
-  transition: opacity 500ms ease-in-out;
-}
+h1 { color: #007f8b; }
 
 .invisible {
   opacity: 0.2;
   pointer-events: none;
 }
 
-.videoView,
-.detectOnClick {
+.canvas-container {
+  position: relative;
+  width: 640px;
+  height: 480px;
+}
+
+video, .output_canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 640px;
+  height: 480px;
+  /* Aynalama efekti */
+  transform: rotateY(180deg);
+  -webkit-transform: rotateY(180deg);
+}
+
+.videoView, .detectOnClick {
   position: relative;
   float: left;
   width: 48%;
-  margin: 2% 1%;
+  margin: 1%;
   cursor: pointer;
-}
-
-.canvas {
-  z-index: 1;
-  position: absolute;
-  pointer-events: none;
-}
-
-.output_canvas {
-  /* Canvas da video ile aynı şekilde aynalanmalı */
-  transform: rotateY(180deg);
-  -webkit-transform: rotateY(180deg);
-  -moz-transform: rotateY(180deg);
 }
 
 .detectOnClick img {
   width: 100%;
   display: block;
+}
+
+.canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: none;
 }
