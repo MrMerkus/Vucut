@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPU Odaklı Vücut ve El Takibi</title>
+    <title>Kesin Takip | Dark Mode</title>
     <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="main-wrapper">
     <h1>El ve Vücut Hareketleri</h1>
-    <p class="status">Sistem hazır. Yüksek performanslı (GPU) takip için kamerayı açın.</p>
+    <p class="status">Sistem hazır. Kamerayı açarak yüksek doğruluklu takibi başlatın.</p>
 
     <div id="liveView" class="videoView">
       <button id="webcamButton" class="mdc-button mdc-button--raised">
         <span class="mdc-button__label">KAMERAYI AÇ</span>
       </button>
       
-      <div class="canvas-container">
+      <div class="canvas-container" id="container">
         <video id="webcam" autoplay playsinline></video>
         <canvas class="output_canvas" id="output_canvas"></canvas>
       </div>
