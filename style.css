@@ -1,22 +1,42 @@
 body {
   font-family: 'Roboto', sans-serif;
-  margin: 2em;
-  color: #3d3d3d;
-  --mdc-theme-primary: #007f8b;
-  --mdc-theme-on-primary: #f1f3f4;
+  margin: 0;
+  padding: 2em;
+  background-color: #121212; /* Karanlık Arka Plan */
+  color: #e0e0e0; /* Açık Gri Yazı */
 }
 
-h1 { color: #007f8b; }
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+h1 {
+  color: #00bfa5; /* Turkuaz tonu başlık */
+  margin-bottom: 1em;
+}
+
+.status-text {
+  color: #9e9e9e;
+  margin-bottom: 2em;
+}
 
 .invisible {
   opacity: 0.2;
   pointer-events: none;
 }
 
+/* Video ve Canvas Alanı */
 .canvas-container {
   position: relative;
   width: 640px;
   height: 480px;
+  margin: 0 auto;
+  border: 2px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #000;
 }
 
 video, .output_canvas {
@@ -25,28 +45,12 @@ video, .output_canvas {
   top: 0;
   width: 640px;
   height: 480px;
-  /* Aynalama efekti */
+  /* Aynalama */
   transform: rotateY(180deg);
   -webkit-transform: rotateY(180deg);
 }
 
-.videoView, .detectOnClick {
-  position: relative;
-  float: left;
-  width: 48%;
-  margin: 1%;
-  cursor: pointer;
-}
-
-.detectOnClick img {
-  width: 100%;
-  display: block;
-}
-
-.canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 1;
-  pointer-events: none;
+.mdc-button--raised {
+  background-color: #00bfa5 !important;
+  margin-bottom: 20px;
 }
