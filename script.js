@@ -13,35 +13,32 @@ const canvasElement = document.getElementById("output_canvas");
 const canvasCtx = canvasElement.getContext("2d");
 const drawingUtils = new DrawingUtils(canvasCtx);
 
-// Görünürlük Eşiği (0.0 ile 1.0 arası). 
-// 0.65 ve üzeri demek: "Kameranın net bir şekilde görmediği vücut kısımlarını çizme" demektir.
-const VISIBILITY_THRESHOLD = 0.65; 
+// GÖRÜNÜRLÜK FİLTRESİ ÇOK DAHA KATI HALE GETİRİLDİ (0.85)
+// Sadece net olarak kadrajda olan kısımlar çizilecek.
+const VISIBILITY_THRESHOLD = 0.85; 
 
-// Modelleri yükle (Tam GPU ve Full Model Odaklı)
 const setupModels = async () => {
   const vision = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
   );
   
-  // VÜCUT TAKİBİ - Titreme azaltıldı, model büyütüldü
   poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
     baseOptions: {
-      // 'lite' yerine 'full' kullanıyoruz. İşlem yükü artar ama GPU bunu çözer. Titreme biter.
       modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task`,
-      delegate: "GPU" // İşlemleri Ekran Kartına Yönlendir
+      delegate: "GPU"
     },
     runningMode: "VIDEO",
     numPoses: 2,
-    minPoseDetectionConfidence: 0.75, // Kararlılık için minimum algılama güveni artırıldı
-    minPosePresenceConfidence: 0.75,
-    minTrackingConfidence: 0.75      // Titremeyi engelleyen en önemli parametre
+    // Kararlılık için güven oranları %85'e çıkarıldı
+    minPoseDetectionConfidence: 0.85, 
+    minPosePresenceConfidence: 0.85,
+    minTrackingConfidence: 0.85      
   });
 
-  // EL TAKİBİ
   handLandmarker = await HandLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-      delegate: "GPU" // İşlemleri Ekran Kartına Yönlendir
+      delegate: "GPU"
     },
     runningMode: "VIDEO",
     numHands: 2,
@@ -63,8 +60,9 @@ webcamButton.addEventListener("click", async () => {
   } else {
     webcamRunning = true;
     webcamButton.innerText = "KAMERAYI KAPAT";
+    // İdeal bir çözünürlük isteyelim ama kameranın orijinaline saygı duyalım
     const stream = await navigator.mediaDevices.getUserMedia({ 
-      video: { width: 1280, height: 720 } // Yüksek çözünürlük isteği
+      video: { width: 1280, height: 720 } 
     });
     video.srcObject = stream;
     video.addEventListener("loadeddata", predictWebcam);
@@ -73,9 +71,13 @@ webcamButton.addEventListener("click", async () => {
 
 let lastVideoTime = -1;
 async function predictWebcam() {
-  if (canvasElement.width !== video.videoWidth) {
+  // KAYMA SORUNUNU ÇÖZEN EN KRİTİK KISIM:
+  // Canvas'ın hem iç çözünürlüğünü hem de CSS görünüm boyutunu videoya zorla eşitliyoruz.
+  if (canvasElement.width !== video.videoWidth || canvasElement.height !== video.videoHeight) {
     canvasElement.width = video.videoWidth;
     canvasElement.height = video.videoHeight;
+    canvasElement.style.width = video.videoWidth + "px";
+    canvasElement.style.height = video.videoHeight + "px";
   }
 
   let startTimeMs = performance.now();
@@ -86,18 +88,19 @@ async function predictWebcam() {
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-    // 1. VÜCUT TAHMİNİ (Özel Görünürlük Filtreli Çizim)
+    // 1. VÜCUT TAHMİNİ
     const poseResults = poseLandmarker.detectForVideo(video, startTimeMs);
     if (poseResults.landmarks) {
       for (const pose of poseResults.landmarks) {
         
-        // Önce Bağlantıları (Çizgileri) Çiz
+        // Çizgiler (Bağlantılar)
         PoseLandmarker.POSE_CONNECTIONS.forEach(connection => {
           const startPoint = pose[connection.start];
           const endPoint = pose[connection.end];
 
-          // Sadece her iki nokta da kamerada net görünüyorsa çizgiyi çek
-          if (startPoint.visibility > VISIBILITY_THRESHOLD && endPoint.visibility > VISIBILITY_THRESHOLD) {
+          // Her iki nokta da net görünüyorsa ve ekranda (x/y 0 ile 1 arasında) ise çiz
+          if (startPoint.visibility > VISIBILITY_THRESHOLD && endPoint.visibility > VISIBILITY_THRESHOLD &&
+              startPoint.x >= 0 && startPoint.x <= 1 && endPoint.x >= 0 && endPoint.x <= 1) {
             canvasCtx.beginPath();
             canvasCtx.moveTo(startPoint.x * canvasElement.width, startPoint.y * canvasElement.height);
             canvasCtx.lineTo(endPoint.x * canvasElement.width, endPoint.y * canvasElement.height);
@@ -107,10 +110,9 @@ async function predictWebcam() {
           }
         });
 
-        // Sonra Noktaları (Eklemleri) Çiz
+        // Noktalar (Eklemler)
         pose.forEach(landmark => {
-          // Eğer eklem kameranın görmediği bir yerdeyse (masanın altı vb.) noktayı koyma
-          if (landmark.visibility > VISIBILITY_THRESHOLD) {
+          if (landmark.visibility > VISIBILITY_THRESHOLD && landmark.x >= 0 && landmark.x <= 1 && landmark.y >= 0 && landmark.y <= 1) {
             canvasCtx.beginPath();
             canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 4, 0, 2 * Math.PI);
             canvasCtx.fillStyle = "#ffffff";
@@ -124,7 +126,6 @@ async function predictWebcam() {
     const handResults = handLandmarker.detectForVideo(video, startTimeMs);
     if (handResults.landmarks) {
       for (const landmarks of handResults.landmarks) {
-        // Eller genelde bütün olarak göründüğü için standart çizim aracı yeterlidir
         drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: "#ff4081", lineWidth: 3 });
         drawingUtils.drawLandmarks(landmarks, { color: "#fff", radius: 2 });
       }
