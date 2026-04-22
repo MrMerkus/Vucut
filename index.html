@@ -3,30 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>El ve Vücut Hareketleri Takibi</title>
+    <title>El ve Vücut Takibi | Dark Mode</title>
     <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
 </head>
 <body>
-  <div class="container">
+  <div class="main-wrapper">
     <h1>El ve Vücut Hareketleri</h1>
+    <p class="status">Sistem hazır, kamerayı açarak senkronize takibi başlatabilirsiniz.</p>
 
-    <section id="demos" class="invisible">
-      <p class="status-text">Sistem hazır. Kamerayı açarak takibi başlatabilirsiniz.</p>
-
-      <div id="liveView" class="videoView">
-        <button id="webcamButton" class="mdc-button mdc-button--raised">
-          <span class="mdc-button__ripple"></span>
-          <span class="mdc-button__label">KAMERAYI ETKİNLEŞTİR</span>
-        </button>
-        
-        <div class="canvas-container">
-          <video id="webcam" autoplay playsinline></video>
-          <canvas class="output_canvas" id="output_canvas" width="640" height="480"></canvas>
-        </div>
+    <div id="liveView" class="videoView">
+      <button id="webcamButton" class="mdc-button mdc-button--raised">
+        <span class="mdc-button__label">KAMERAYI AÇ</span>
+      </button>
+      
+      <div class="canvas-container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas class="output_canvas" id="output_canvas"></canvas>
       </div>
-    </section>
+    </div>
   </div>
 
   <script type="module" src="script.js"></script>
