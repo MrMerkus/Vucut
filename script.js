@@ -19,13 +19,17 @@ const setupModels = async () => {
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
   );
   
-  // TİTREME ÇÖZÜMÜ: "lite" modeli yerine daha stabil olan "full" modeline geçtik.
+  // 1. TİTREME ÇÖZÜMÜ: En hassas model olan "HEAVY" modeline geçildi.
+  // Ek olarak algılama güvenliği (Confidence) eşikleri artırıldı.
   poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
     baseOptions: {
-      modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task`,
+      modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task`,
       delegate: "GPU"
     },
-    runningMode: "VIDEO"
+    runningMode: "VIDEO",
+    minPoseDetectionConfidence: 0.65, // %65 emin olmadan algılama
+    minPosePresenceConfidence: 0.65,
+    minTrackingConfidence: 0.65       // Takipte hassasiyeti artır
   });
 
   handLandmarker = await HandLandmarker.createFromOptions(vision, {
@@ -34,7 +38,10 @@ const setupModels = async () => {
       delegate: "GPU"
     },
     runningMode: "VIDEO",
-    numHands: 2
+    numHands: 2,
+    minHandDetectionConfidence: 0.65,
+    minHandPresenceConfidence: 0.65,
+    minTrackingConfidence: 0.65
   });
 
   document.body.classList.add("ready");
@@ -53,14 +60,21 @@ webcamButton.addEventListener("click", async () => {
     webcamButton.innerText = "KAMERAYI AÇ";
     video.srcObject.getTracks().forEach(t => t.stop());
     video.srcObject = null;
-    
-    // Kamera kapandığında çizimleri de temizle
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
   } else {
     webcamRunning = true;
     webcamButton.innerText = "KAMERAYI KAPAT";
     
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    // 2. SAPMA ÇÖZÜMÜ: Kamerayı CSS'teki 16:9 oranıyla eşleşmesi için zorla 720p'de başlat
+    const constraints = {
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: "user" // Ön/Web kamerasını tercih et
+      }
+    };
+    
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     video.srcObject = stream;
     
     video.onloadeddata = async () => {
@@ -90,20 +104,16 @@ async function predictWebcam() {
     const poseResults = poseLandmarker.detectForVideo(video, startTimeMs);
     const handResults = handLandmarker.detectForVideo(video, startTimeMs);
 
-    // GÖRSELLİK ÇÖZÜMÜ: Vücut için Turkuaz Neon Efekti
+    // Vücut için Turkuaz Neon Efekti
     if (poseResults.landmarks) {
       for (const landmark of poseResults.landmarks) {
-        // Parlama (Glow) ayarları
         canvasCtx.shadowColor = "#00bfa5";
         canvasCtx.shadowBlur = 15;
         
-        // Vücut iskeleti (Daha kalın çizgiler)
         drawingUtils.drawConnectors(landmark, PoseLandmarker.POSE_CONNECTIONS, { 
           color: "#00bfa5", 
           lineWidth: 4 
         });
-        
-        // Eklem noktaları (Dışı beyaz, içi turkuaz büyük noktalar)
         drawingUtils.drawLandmarks(landmark, { 
           color: "#ffffff", 
           fillColor: "#00bfa5",
@@ -113,20 +123,16 @@ async function predictWebcam() {
       }
     }
 
-    // GÖRSELLİK ÇÖZÜMÜ: Eller için Pembe Neon Efekti
+    // Eller için Pembe Neon Efekti
     if (handResults.landmarks) {
       for (const landmarks of handResults.landmarks) {
-        // Parlama (Glow) ayarları
         canvasCtx.shadowColor = "#ff4081";
         canvasCtx.shadowBlur = 15;
 
-        // El iskeleti
         drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { 
           color: "#ff4081", 
           lineWidth: 3 
         });
-        
-        // Parmak boğumları
         drawingUtils.drawLandmarks(landmarks, { 
           color: "#ffffff", 
           fillColor: "#ff4081",
