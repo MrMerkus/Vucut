@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vücut & El Takip Sistemi</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="main-wrapper">
+    <header>
+      <div class="title-group">
+        <span class="tag">MEDIAPIPE v0.10</span>
+        <h1>HAREKET ANALİZ SİSTEMİ</h1>
+        <p class="subtitle">Gerçek zamanlı vücut & el takibi</p>
+      </div>
+      <div class="header-controls">
+        <div class="fps-badge"><span id="fps-display">0</span> FPS</div>
+        <div class="model-badge" id="model-status">● MODEL YÜKLENİYOR</div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- SOL: Kamera -->
+      <div class="camera-section">
+        <div class="canvas-container" id="canvasContainer">
+          <video id="webcam" autoplay playsinline></video>
+          <canvas id="output_canvas"></canvas>
+          <div class="overlay-grid"></div>
+          <div class="corner tl"></div>
+          <div class="corner tr"></div>
+          <div class="corner bl"></div>
+          <div class="corner br"></div>
+          <div class="camera-placeholder" id="cameraPlaceholder">
+            <div class="placeholder-icon">⬡</div>
+            <p>Kamerayı açmak için butona tıklayın</p>
+          </div>
+        </div>
+        <div class="camera-controls">
+          <button id="webcamButton" class="btn-primary">
+            <span class="btn-icon">◉</span>
+            <span id="btnText">KAMERAYI AÇ</span>
+          </button>
+          <button id="screenshotButton" class="btn-secondary" disabled>
+            <span class="btn-icon">⬛</span>
+            EKRAN GÖRÜNTÜSÜ
+          </button>
+        </div>
+      </div>
+
+      <!-- SAĞ: Metrikler -->
+      <div class="metrics-panel">
+        <div class="panel-section">
+          <h3 class="panel-title">EKLEM AÇILARI</h3>
+          <div class="angles-grid">
+            <div class="angle-card" id="card-left-elbow">
+              <div class="angle-label">SOL DİRSEK</div>
+              <div class="angle-value" id="angle-left-elbow">—°</div>
+              <div class="angle-bar-wrap"><div class="angle-bar" id="bar-left-elbow"></div></div>
+            </div>
+            <div class="angle-card" id="card-right-elbow">
+              <div class="angle-label">SAĞ DİRSEK</div>
+              <div class="angle-value" id="angle-right-elbow">—°</div>
+              <div class="angle-bar-wrap"><div class="angle-bar" id="bar-right-elbow"></div></div>
+            </div>
+            <div class="angle-card" id="card-left-shoulder">
+              <div class="angle-label">SOL OMUZ</div>
+              <div class="angle-value" id="angle-left-shoulder">—°</div>
+              <div class="angle-bar-wrap"><div class="angle-bar" id="bar-left-shoulder"></div></div>
+            </div>
+            <div class="angle-card" id="card-right-shoulder">
+              <div class="angle-label">SAĞ OMUZ</div>
+              <div class="angle-value" id="angle-right-shoulder">—°</div>
+              <div class="angle-bar-wrap"><div class="angle-bar" id="bar-right-shoulder"></div></div>
+            </div>
+            <div class="angle-card" id="card-left-knee">
+              <div class="angle-label">SOL DİZ</div>
+              <div class="angle-value" id="angle-left-knee">—°</div>
+              <div class="angle-bar-wrap"><div class="angle-bar" id="bar-left-knee"></div></div>
+            </div>
+            <div class="angle-card" id="card-right-knee">
+              <div class="angle-label">SAĞ DİZ</div>
+              <div class="angle-value" id="angle-right-knee">—°</div>
+              <div class="angle-bar-wrap"><div class="angle-bar" id="bar-right-knee"></div></div>
+            </div>
+            <div class="angle-card wide" id="card-shoulder-spread">
+              <div class="angle-label">OMUZ GENİŞLİĞİ AÇISI</div>
+              <div class="angle-value" id="angle-shoulder-spread">—°</div>
+              <div class="angle-bar-wrap"><div class="angle-bar" id="bar-shoulder-spread"></div></div>
+            </div>
+            <div class="angle-card wide" id="card-hip">
+              <div class="angle-label">KALÇA AÇISI</div>
+              <div class="angle-value" id="angle-hip">—°</div>
+              <div class="angle-bar-wrap"><div class="angle-bar" id="bar-hip"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3 class="panel-title">VERİ AKIŞI</h3>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-label">VÜCUT</div>
+              <div class="stat-value" id="stat-pose">HAYIR</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">SOL EL</div>
+              <div class="stat-value" id="stat-left-hand">HAYIR</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">SAĞ EL</div>
+              <div class="stat-value" id="stat-right-hand">HAYIR</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">NOKTA SAYISI</div>
+              <div class="stat-value" id="stat-landmarks">0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3 class="panel-title">SİMETRİ SKORU</h3>
+          <div class="symmetry-display">
+            <div class="symmetry-score" id="symmetry-score">—</div>
+            <div class="symmetry-label">Omuz / Dirsek / Diz simetrisi</div>
+            <div class="symmetry-bar-wrap">
+              <div class="symmetry-bar" id="symmetry-bar"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
