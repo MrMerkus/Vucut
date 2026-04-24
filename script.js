@@ -1,9 +1,10 @@
+// 1. IMPORT DÜZELTMESİ: vision_bundle.js dosyası açıkça belirtildi.
 import {
   PoseLandmarker,
   HandLandmarker,
   FilesetResolver,
   DrawingUtils
-} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/vision_bundle.js";
 
 let poseLandmarker;
 let handLandmarker;
@@ -22,7 +23,7 @@ const setupModels = async () => {
   poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`,
-      delegate: "GPU"
+      delegate: "GPU" // Tarayıcın GPU'yu desteklemiyorsa burayı "CPU" yapabilirsin
     },
     runningMode: "VIDEO"
   });
@@ -36,27 +37,47 @@ const setupModels = async () => {
     numHands: 2
   });
 
+  // Sistem hazır olduğunda butonu belirginleştirecek sınıfı ekle
   document.body.classList.add("ready");
 };
 setupModels();
 
 const webcamButton = document.getElementById("webcamButton");
 webcamButton.addEventListener("click", async () => {
+  // 2. KORUMA: Modeller henüz yüklenmediyse butonu devre dışı bırak veya uyar
+  if (!poseLandmarker || !handLandmarker) {
+    alert("Yapay zeka modelleri henüz indiriliyor, lütfen birkaç saniye daha bekleyin.");
+    return;
+  }
+
   if (webcamRunning) {
     webcamRunning = false;
     webcamButton.innerText = "KAMERAYI AÇ";
+    // Kamerayı tamamen kapat
     video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
   } else {
     webcamRunning = true;
     webcamButton.innerText = "KAMERAYI KAPAT";
+    
+    // Kameraya erişim isteği
     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
     video.srcObject = stream;
-    video.addEventListener("loadeddata", predictWebcam);
+    
+    // 3. EVENT LISTENER DÜZELTMESİ: Üst üste yığılmayı engellemek için onloadeddata kullanımı
+    video.onloadeddata = async () => {
+      // 4. AUTOPLAY GÜVENLİĞİ: Videoyu açıkça oynatmaya zorla
+      await video.play();
+      predictWebcam();
+    };
   }
 });
 
 let lastVideoTime = -1;
 async function predictWebcam() {
+  // Kamera durdurulduysa animasyon döngüsünden çık
+  if (!webcamRunning) return;
+
   // Koordinat kaymasını önleyen kritik nokta: Canvas boyutunu video ile eşitle
   if (canvasElement.width !== video.videoWidth) {
     canvasElement.width = video.videoWidth;
