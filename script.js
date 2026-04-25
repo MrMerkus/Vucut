@@ -11,21 +11,21 @@ const canvasElement = document.getElementById("output_canvas");
 const canvasCtx     = canvasElement.getContext("2d");
 const drawingUtils  = new DrawingUtils(canvasCtx);
 
-const webcamButton    = document.getElementById("webcamButton");
-const btnText         = document.getElementById("btnText");
-const screenshotBtn   = document.getElementById("screenshotButton");
+const webcamButton      = document.getElementById("webcamButton");
+const btnText           = document.getElementById("btnText");
+const screenshotBtn     = document.getElementById("screenshotButton");
 const cameraPlaceholder = document.getElementById("cameraPlaceholder");
-const modelStatus     = document.getElementById("model-status");
-const fpsDisplay      = document.getElementById("fps-display");
+const modelStatus       = document.getElementById("model-status");
+const fpsDisplay        = document.getElementById("fps-display");
+const metricsContainer  = document.getElementById("metrics-container");
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let poseLandmarker, handLandmarker;
 let webcamRunning = false;
 let lastVideoTime = -1;
-
-// FPS tracking
 let fpsFrameCount = 0;
 let fpsLastTime   = performance.now();
+let activePersons = 0; // Şu an ekranda takip edilen kişi sayısı
 
 // ── MODEL SETUP ───────────────────────────────────────────────────────────────
 const setupModels = async () => {
@@ -39,6 +39,7 @@ const setupModels = async () => {
       delegate: "GPU"
     },
     runningMode: "VIDEO",
+    numPoses: 4, // AYAR: Maksimum aynı anda algılanacak kişi sayısı
     minPoseDetectionConfidence: 0.65,
     minPosePresenceConfidence: 0.65,
     minTrackingConfidence: 0.65
@@ -50,7 +51,7 @@ const setupModels = async () => {
       delegate: "GPU"
     },
     runningMode: "VIDEO",
-    numHands: 2,
+    numHands: 8, // AYAR: 4 kişi x 2 el = 8 el
     minHandDetectionConfidence: 0.65,
     minHandPresenceConfidence: 0.65,
     minTrackingConfidence: 0.65
@@ -61,11 +62,7 @@ const setupModels = async () => {
 };
 setupModels();
 
-// ── ANGLE MATH ────────────────────────────────────────────────────────────────
-/**
- * Üç nokta arasındaki açıyı derece cinsinden hesaplar.
- * B noktası köşe noktasıdır (A–B–C üçgeni).
- */
+// ── AÇI HESAPLAMA ─────────────────────────────────────────────────────────────
 function calcAngle(A, B, C) {
   const BA = { x: A.x - B.x, y: A.y - B.y };
   const BC = { x: C.x - B.x, y: C.y - B.y };
@@ -77,59 +74,9 @@ function calcAngle(A, B, C) {
   return Math.round(Math.acos(cos) * (180 / Math.PI));
 }
 
-// ── UI HELPERS ────────────────────────────────────────────────────────────────
-function updateAngleCard(id, degrees) {
-  const valueEl = document.getElementById(`angle-${id}`);
-  const barEl   = document.getElementById(`bar-${id}`);
-  const card    = document.getElementById(`card-${id}`);
-
-  if (degrees === null) {
-    valueEl.textContent = "—°";
-    barEl.style.width = "0%";
-    card.classList.remove("active");
-    return;
-  }
-
-  valueEl.textContent = `${degrees}°`;
-  // Bar: 0°=0%, 180°=100%
-  const pct = Math.min(100, (degrees / 180) * 100);
-  barEl.style.width = `${pct}%`;
-  card.classList.add("active");
-
-  // Renk: tam açılmış (yakın 180°) → teal, bükümlü (0–90°) → pink
-  const hue = degrees < 90 ? "var(--pink)" : degrees < 150 ? "var(--yellow)" : "var(--teal)";
-  barEl.style.background = hue;
-  valueEl.style.color    = hue;
-}
-
-function updateStat(id, isActive, label = null) {
-  const el = document.getElementById(id);
-  el.textContent = isActive ? (label || "EVET") : "HAYIR";
-  el.className = "stat-value" + (isActive ? " yes" : "");
-}
-
-function updateSymmetry(score) {
-  const el  = document.getElementById("symmetry-score");
-  const bar = document.getElementById("symmetry-bar");
-  if (score === null) {
-    el.textContent = "—";
-    bar.style.width = "0%";
-    return;
-  }
-  el.textContent = `${score}%`;
-  bar.style.width = `${score}%`;
-  // Renk kodu
-  el.style.color = score > 80 ? "var(--green)" : score > 50 ? "var(--yellow)" : "var(--red)";
-}
-
-// ── CANVAS ANGLE OVERLAY ──────────────────────────────────────────────────────
-/**
- * Canvas üzerine açı etiketini yazar.
- * x, y: normalize edilmiş koordinatlar (0-1 arası).
- */
 function drawAngleLabel(ctx, x, y, degrees, color = "#00e5cc") {
   if (degrees === null) return;
-  const cx = (1 - x) * canvasElement.width;  // aynalı x
+  const cx = (1 - x) * canvasElement.width;
   const cy = y       * canvasElement.height;
 
   ctx.save();
@@ -137,7 +84,6 @@ function drawAngleLabel(ctx, x, y, degrees, color = "#00e5cc") {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // Arka plan pill
   const text  = `${degrees}°`;
   const tw    = ctx.measureText(text).width + 10;
   const th    = 18;
@@ -147,7 +93,6 @@ function drawAngleLabel(ctx, x, y, degrees, color = "#00e5cc") {
   ctx.roundRect(cx - tw / 2, cy - th / 2, tw, th, 4);
   ctx.fill();
 
-  // Çerçeve
   ctx.strokeStyle = color;
   ctx.lineWidth   = 1;
   ctx.stroke();
@@ -159,10 +104,96 @@ function drawAngleLabel(ctx, x, y, degrees, color = "#00e5cc") {
   ctx.restore();
 }
 
-// ── WEBCAM TOGGLE ─────────────────────────────────────────────────────────────
+// ── DİNAMİK ARAYÜZ (UI) YÖNETİMİ ──────────────────────────────────────────────
+// Yeni biri algılandığında onun için HTML iskeleti oluşturur
+function buildPersonUI(pIndex) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'person-wrapper';
+  wrapper.id = `person-wrapper-${pIndex}`;
+  
+  // Renk kodlaması (kişileri birbirinden ayırmak için)
+  const colors = ['var(--teal)', 'var(--pink)', 'var(--yellow)', 'var(--green)'];
+  const pColor = colors[pIndex % colors.length];
+  wrapper.style.borderLeftColor = pColor;
+
+  wrapper.innerHTML = `
+    <div class="person-header" style="color: ${pColor}">
+      <span>DENEK #${pIndex + 1}</span>
+      <span class="person-id-badge" style="background: ${pColor}">AKTİF</span>
+    </div>
+    
+    <div class="panel-section">
+      <h3 class="panel-title">EKLEM AÇILARI</h3>
+      <div class="angles-grid">
+        ${['left-elbow', 'right-elbow', 'left-shoulder', 'right-shoulder', 'left-knee', 'right-knee'].map(joint => `
+          <div class="angle-card" id="card-${pIndex}-${joint}">
+            <div class="angle-label">${joint.replace('-', ' ').toUpperCase()}</div>
+            <div class="angle-value" id="angle-${pIndex}-${joint}">—°</div>
+            <div class="angle-bar-wrap"><div class="angle-bar" id="bar-${pIndex}-${joint}"></div></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="panel-section" style="margin-top: 12px;">
+      <h3 class="panel-title">SİMETRİ SKORU</h3>
+      <div class="symmetry-display">
+        <div class="symmetry-score" id="symmetry-score-${pIndex}">—</div>
+        <div class="symmetry-bar-wrap">
+          <div class="symmetry-bar" id="symmetry-bar-${pIndex}"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  return wrapper;
+}
+
+// Kişinin verilerini sadece DOM üzerinde günceller (Performans için)
+function updatePersonData(pIndex, angles, score) {
+  // Açıları güncelle
+  for (const [key, value] of Object.entries(angles)) {
+    const valueEl = document.getElementById(`angle-${pIndex}-${key}`);
+    const barEl   = document.getElementById(`bar-${pIndex}-${key}`);
+    const card    = document.getElementById(`card-${pIndex}-${key}`);
+
+    if (value === null) {
+      if(valueEl) valueEl.textContent = "—°";
+      if(barEl) barEl.style.width = "0%";
+      if(card) card.classList.remove("active");
+      continue;
+    }
+
+    if(valueEl) valueEl.textContent = `${value}°`;
+    const pct = Math.min(100, (value / 180) * 100);
+    
+    if(barEl) {
+      barEl.style.width = `${pct}%`;
+      const hue = value < 90 ? "var(--pink)" : value < 150 ? "var(--yellow)" : "var(--teal)";
+      barEl.style.background = hue;
+      valueEl.style.color    = hue;
+    }
+    if(card) card.classList.add("active");
+  }
+
+  // Simetriyi güncelle
+  const symEl  = document.getElementById(`symmetry-score-${pIndex}`);
+  const symBar = document.getElementById(`symmetry-bar-${pIndex}`);
+  if (score === null) {
+    if(symEl) symEl.textContent = "—";
+    if(symBar) symBar.style.width = "0%";
+  } else {
+    if(symEl) {
+      symEl.textContent = `${score}%`;
+      symEl.style.color = score > 80 ? "var(--green)" : score > 50 ? "var(--yellow)" : "var(--red)";
+    }
+    if(symBar) symBar.style.width = `${score}%`;
+  }
+}
+
+// ── WEBCAM KONTROLÜ ───────────────────────────────────────────────────────────
 webcamButton.addEventListener("click", async () => {
   if (!poseLandmarker || !handLandmarker) {
-    alert("Yapay zeka modelleri henüz yükleniyor, lütfen birkaç saniye bekleyin.");
+    alert("Modeller yükleniyor, lütfen bekleyin.");
     return;
   }
 
@@ -175,15 +206,9 @@ webcamButton.addEventListener("click", async () => {
     video.srcObject = null;
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     cameraPlaceholder.classList.remove("hidden");
-
-    // Metrikleri sıfırla
-    ["left-elbow","right-elbow","left-shoulder","right-shoulder","left-knee","right-knee","shoulder-spread","hip"]
-      .forEach(id => updateAngleCard(id, null));
-    updateStat("stat-pose", false);
-    updateStat("stat-left-hand", false);
-    updateStat("stat-right-hand", false);
-    document.getElementById("stat-landmarks").textContent = "0";
-    updateSymmetry(null);
+    
+    metricsContainer.innerHTML = ""; // Paneli temizle
+    activePersons = 0;
     fpsDisplay.textContent = "0";
   } else {
     webcamRunning = true;
@@ -203,47 +228,16 @@ webcamButton.addEventListener("click", async () => {
   }
 });
 
-// ── SCREENSHOT ────────────────────────────────────────────────────────────────
-screenshotBtn.addEventListener("click", () => {
-  // video + canvas birleştir
-  const tmp = document.createElement("canvas");
-  tmp.width  = canvasElement.width;
-  tmp.height = canvasElement.height;
-  const tCtx = tmp.getContext("2d");
-
-  // Aynalı video frame
-  tCtx.save();
-  tCtx.translate(tmp.width, 0);
-  tCtx.scale(-1, 1);
-  tCtx.drawImage(video, 0, 0, tmp.width, tmp.height);
-  tCtx.restore();
-
-  // canvas çizimlerini ekle (zaten aynalı)
-  tCtx.save();
-  tCtx.translate(tmp.width, 0);
-  tCtx.scale(-1, 1);
-  tCtx.drawImage(canvasElement, 0, 0);
-  tCtx.restore();
-
-  const link = document.createElement("a");
-  link.download = `hareket-analiz-${Date.now()}.png`;
-  link.href = tmp.toDataURL("image/png");
-  link.click();
-});
-
-// ── MAIN LOOP ─────────────────────────────────────────────────────────────────
+// ── ANA DÖNGÜ (MAIN LOOP) ─────────────────────────────────────────────────────
 async function predictWebcam() {
   if (!webcamRunning) return;
 
-  // Canvas boyutunu eşitle
   if (canvasElement.width !== video.videoWidth) {
     canvasElement.width  = video.videoWidth;
     canvasElement.height = video.videoHeight;
   }
 
   const now = performance.now();
-
-  // FPS hesapla
   fpsFrameCount++;
   if (now - fpsLastTime >= 500) {
     fpsDisplay.textContent = Math.round(fpsFrameCount * 1000 / (now - fpsLastTime));
@@ -253,105 +247,81 @@ async function predictWebcam() {
 
   if (lastVideoTime !== video.currentTime) {
     lastVideoTime = video.currentTime;
-
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
     const poseResults = poseLandmarker.detectForVideo(video, now);
     const handResults = handLandmarker.detectForVideo(video, now);
-
-    // ── POSE ────────────────────────────────────────────────────────────────
-    const hasPose = poseResults.landmarks && poseResults.landmarks.length > 0;
-    updateStat("stat-pose", hasPose, "ALGILANDI");
-
-    if (hasPose) {
-      const lm = poseResults.landmarks[0]; // ilk kişi
-      document.getElementById("stat-landmarks").textContent =
-        (lm.length + (handResults.landmarks ? handResults.landmarks.flat().length : 0));
-
-      // Bağlantı & nokta çizimi
-      canvasCtx.shadowColor = "#00e5cc";
-      canvasCtx.shadowBlur  = 12;
-      drawingUtils.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: "#00bfa5", lineWidth: 3 });
-      drawingUtils.drawLandmarks(lm, { color: "#ffffff", fillColor: "#00bfa5", lineWidth: 1, radius: 4 });
-      canvasCtx.shadowBlur = 0;
-
-      // ── AÇI HESAPLARI ────────────────────────────────────────────────────
-      // MediaPipe Pose landmarK indeksleri:
-      // 11=sol omuz  12=sağ omuz  13=sol dirsek  14=sağ dirsek
-      // 15=sol bilek 16=sağ bilek 23=sol kalça  24=sağ kalça
-      // 25=sol diz   26=sağ diz   27=sol ayak   28=sağ ayak
-
-      const leftElbow      = calcAngle(lm[11], lm[13], lm[15]); // omuz-dirsek-bilek
-      const rightElbow     = calcAngle(lm[12], lm[14], lm[16]);
-      const leftShoulder   = calcAngle(lm[13], lm[11], lm[23]); // dirsek-omuz-kalça
-      const rightShoulder  = calcAngle(lm[14], lm[12], lm[24]);
-      const leftKnee       = calcAngle(lm[23], lm[25], lm[27]); // kalça-diz-ayak
-      const rightKnee      = calcAngle(lm[24], lm[26], lm[28]);
-      const shoulderSpread = calcAngle(lm[23], lm[11], lm[12]); // sol kalça-sol omuz-sağ omuz
-      const hipAngle       = calcAngle(lm[11], lm[23], lm[25]); // omuz-kalça-diz
-
-      updateAngleCard("left-elbow",      leftElbow);
-      updateAngleCard("right-elbow",     rightElbow);
-      updateAngleCard("left-shoulder",   leftShoulder);
-      updateAngleCard("right-shoulder",  rightShoulder);
-      updateAngleCard("left-knee",       leftKnee);
-      updateAngleCard("right-knee",      rightKnee);
-      updateAngleCard("shoulder-spread", shoulderSpread);
-      updateAngleCard("hip",             hipAngle);
-
-      // Canvas üzerine açı etiketleri
-      if (leftElbow  !== null) drawAngleLabel(canvasCtx, lm[13].x, lm[13].y, leftElbow,  "#00e5cc");
-      if (rightElbow !== null) drawAngleLabel(canvasCtx, lm[14].x, lm[14].y, rightElbow, "#00e5cc");
-      if (leftKnee   !== null) drawAngleLabel(canvasCtx, lm[25].x, lm[25].y, leftKnee,   "#ffd600");
-      if (rightKnee  !== null) drawAngleLabel(canvasCtx, lm[26].x, lm[26].y, rightKnee,  "#ffd600");
-
-      // ── SİMETRİ SKORU ────────────────────────────────────────────────────
-      const pairs = [
-        [leftElbow,  rightElbow],
-        [leftShoulder, rightShoulder],
-        [leftKnee,   rightKnee]
-      ].filter(([a, b]) => a !== null && b !== null);
-
-      if (pairs.length > 0) {
-        const avgDiff = pairs.reduce((sum, [a, b]) => sum + Math.abs(a - b), 0) / pairs.length;
-        // 0 fark → %100 simetri, 90° fark → %0
-        const score = Math.round(Math.max(0, 100 - (avgDiff / 90) * 100));
-        updateSymmetry(score);
-      } else {
-        updateSymmetry(null);
+    
+    // UI'daki kişi kartı sayısını senkronize et
+    const detectedPersonsCount = poseResults.landmarks ? poseResults.landmarks.length : 0;
+    if (detectedPersonsCount !== activePersons) {
+      metricsContainer.innerHTML = ""; // Kişi sayısı değiştiyse paneli sıfırla
+      for (let i = 0; i < detectedPersonsCount; i++) {
+        metricsContainer.appendChild(buildPersonUI(i));
       }
-    } else {
-      // Pose yok → sıfırla
-      ["left-elbow","right-elbow","left-shoulder","right-shoulder","left-knee","right-knee","shoulder-spread","hip"]
-        .forEach(id => updateAngleCard(id, null));
-      document.getElementById("stat-landmarks").textContent = "0";
-      updateSymmetry(null);
+      activePersons = detectedPersonsCount;
     }
 
-    // ── HANDS ────────────────────────────────────────────────────────────────
-    let leftHandDetected  = false;
-    let rightHandDetected = false;
+    // ── HER BİR KİŞİ İÇİN DÖNGÜ ──────────────────────────────────────────────
+    if (poseResults.landmarks) {
+      poseResults.landmarks.forEach((lm, pIndex) => {
+        // Renk kodlaması
+        const colors = ['#00e5cc', '#ff4081', '#ffd600', '#69ff47'];
+        const pColor = colors[pIndex % colors.length];
 
+        // İskelet Çizimi
+        canvasCtx.shadowColor = pColor;
+        canvasCtx.shadowBlur  = 8;
+        drawingUtils.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: pColor, lineWidth: 3 });
+        drawingUtils.drawLandmarks(lm, { color: "#ffffff", fillColor: pColor, lineWidth: 1, radius: 4 });
+        canvasCtx.shadowBlur = 0;
+
+        // Açı Hesaplamaları
+        const angles = {
+          'left-elbow': calcAngle(lm[11], lm[13], lm[15]),
+          'right-elbow': calcAngle(lm[12], lm[14], lm[16]),
+          'left-shoulder': calcAngle(lm[13], lm[11], lm[23]),
+          'right-shoulder': calcAngle(lm[14], lm[12], lm[24]),
+          'left-knee': calcAngle(lm[23], lm[25], lm[27]),
+          'right-knee': calcAngle(lm[24], lm[26], lm[28])
+        };
+
+        // Canvas üzerine etiketleri yazdır (Sadece kollar ve dizler)
+        if (angles['left-elbow'] !== null) drawAngleLabel(canvasCtx, lm[13].x, lm[13].y, angles['left-elbow'], pColor);
+        if (angles['right-elbow'] !== null) drawAngleLabel(canvasCtx, lm[14].x, lm[14].y, angles['right-elbow'], pColor);
+        if (angles['left-knee'] !== null) drawAngleLabel(canvasCtx, lm[25].x, lm[25].y, angles['left-knee'], pColor);
+        if (angles['right-knee'] !== null) drawAngleLabel(canvasCtx, lm[26].x, lm[26].y, angles['right-knee'], pColor);
+
+        // Simetri Skoru
+        const pairs = [
+          [angles['left-elbow'], angles['right-elbow']],
+          [angles['left-shoulder'], angles['right-shoulder']],
+          [angles['left-knee'], angles['right-knee']]
+        ].filter(([a, b]) => a !== null && b !== null);
+
+        let score = null;
+        if (pairs.length > 0) {
+          const avgDiff = pairs.reduce((sum, [a, b]) => sum + Math.abs(a - b), 0) / pairs.length;
+          score = Math.round(Math.max(0, 100 - (avgDiff / 90) * 100));
+        }
+
+        // Sağ paneldeki spesifik kişiyi güncelle
+        updatePersonData(pIndex, angles, score);
+      });
+    }
+
+    // ── ELLER İÇİN DÖNGÜ (Tüm elleri ekrana çiz) ───────────────────────────
     if (handResults.landmarks && handResults.landmarks.length > 0) {
       for (let i = 0; i < handResults.landmarks.length; i++) {
-        const landmarks  = handResults.landmarks[i];
-        const handedness = handResults.handedness?.[i]?.[0]?.categoryName;
-
-        // Not: video aynalı, el etiketleri de tersine döner
-        if (handedness === "Right") leftHandDetected  = true;
-        if (handedness === "Left")  rightHandDetected = true;
-
+        const lm = handResults.landmarks[i];
         canvasCtx.shadowColor = "#ff4081";
-        canvasCtx.shadowBlur  = 12;
-        drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, { color: "#ff4081", lineWidth: 2.5 });
-        drawingUtils.drawLandmarks(landmarks, { color: "#ffffff", fillColor: "#ff4081", lineWidth: 1, radius: 3 });
+        canvasCtx.shadowBlur  = 8;
+        drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS, { color: "#ff4081", lineWidth: 2 });
+        drawingUtils.drawLandmarks(lm, { color: "#ffffff", fillColor: "#ff4081", lineWidth: 1, radius: 3 });
         canvasCtx.shadowBlur = 0;
       }
     }
-
-    updateStat("stat-left-hand",  leftHandDetected,  "ALGILANDI");
-    updateStat("stat-right-hand", rightHandDetected, "ALGILANDI");
 
     canvasCtx.restore();
   }
